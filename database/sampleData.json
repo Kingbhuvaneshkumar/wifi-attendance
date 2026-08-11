@@ -1,0 +1,12 @@
+{
+  "users": [
+    { "name": "Admin User", "email": "admin@example.com", "password": "admin123", "role": "admin" },
+    { "name": "Faculty User", "email": "faculty@example.com", "password": "faculty123", "role": "faculty" },
+    { "name": "Student User", "email": "student@example.com", "password": "student123", "role": "student" }
+  ],
+  "subjects": [
+    { "name": "Computer Networks", "code": "CN101", "department": "Computer Science" },
+    { "name": "Database Systems", "code": "DB102", "department": "Information Technology" }
+  ],
+  "attendance": []
+}
