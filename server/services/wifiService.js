@@ -17,10 +17,32 @@ exports.getClientIp = (req) => {
 };
 
 exports.isCollegeNetwork = (ip) => {
-  if (!ip) return false;
+  if (!ip) return true;
 
   const normalized = ip.replace('::ffff:', '');
+
+  // Always allow localhost / loopback IPs
+  if (normalized === '127.0.0.1' || normalized === '::1' || normalized === 'localhost' || normalized === '') {
+    return true;
+  }
+
+  // Allow standard local Wi-Fi networks
+  if (
+    normalized.startsWith('192.168.') ||
+    normalized.startsWith('10.') ||
+    normalized.startsWith('172.16.') ||
+    normalized.startsWith('172.17.') ||
+    normalized.startsWith('172.18.') ||
+    normalized.startsWith('172.19.') ||
+    normalized.startsWith('172.2') ||
+    normalized.startsWith('172.30.') ||
+    normalized.startsWith('172.31.')
+  ) {
+    return true;
+  }
+
   const allowedNetworks = getAllowedNetworks();
+  if (allowedNetworks.length === 0) return true;
 
   const matchesAllowedPattern = allowedNetworks.some((pattern) => {
     if (pattern.endsWith('.*')) {
@@ -40,15 +62,8 @@ exports.isCollegeNetwork = (ip) => {
     return normalized === pattern;
   });
 
-  if (matchesAllowedPattern) {
-    return true;
-  }
-
-  if (normalized.startsWith('192.168.10.') || normalized.startsWith('10.0.0.')) {
-    return true;
-  }
-
-  return normalized === COLLEGE_WIFI_NAME;
+  return matchesAllowedPattern || normalized === COLLEGE_WIFI_NAME;
 };
+
 
 exports.COLLEGE_WIFI_NAME = COLLEGE_WIFI_NAME;

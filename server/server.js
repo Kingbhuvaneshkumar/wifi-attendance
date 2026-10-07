@@ -1,6 +1,9 @@
 const express = require('express');
+const http = require('http');
+const cors = require('cors');
 const dotenv = require('dotenv');
 const connectDB = require('./config/db');
+const { initSocket } = require('./utils/socket');
 const authRoutes = require('./routes/authRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const networkRoutes = require('./routes/networkRoutes');
@@ -15,6 +18,7 @@ const startServer = async () => {
   await connectDB();
 
   const app = express();
+  app.use(cors());
   app.use(express.json());
 
   app.use('/api/auth', authRoutes);
@@ -27,7 +31,10 @@ const startServer = async () => {
   app.use(errorHandler);
 
   const PORT = process.env.PORT || 5000;
-  const server = app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  const server = http.createServer(app);
+  initSocket(server);
+
+  server.listen(PORT, () => console.log(`Server running with Socket.io on port ${PORT}`));
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
@@ -38,5 +45,6 @@ const startServer = async () => {
     process.exit(1);
   });
 };
+
 
 startServer();

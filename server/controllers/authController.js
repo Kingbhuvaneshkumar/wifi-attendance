@@ -36,10 +36,21 @@ exports.register = async (req, res, next) => {
 exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = email?.trim().toLowerCase();
-    const user = await User.findOne({ email: normalizedEmail }).select('+password');
-    if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email/Student ID and password are required' });
+    }
+
+    const rawInput = email.trim();
+    const user = await User.findOne({
+      $or: [
+        { email: rawInput.toLowerCase() },
+        { email: new RegExp(`^${rawInput}$`, 'i') },
+        { studentId: rawInput },
+      ],
+    }).select('+password');
+
+    if (!user || !(await user.matchPassword(password.trim()))) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials. Please check your email/student ID and password.' });
     }
 
     const userObj = user.toObject();
@@ -54,3 +65,4 @@ exports.login = async (req, res, next) => {
     next(error);
   }
 };
+

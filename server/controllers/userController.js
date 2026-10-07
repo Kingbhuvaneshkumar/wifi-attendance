@@ -5,24 +5,28 @@ exports.registerFace = async (req, res, next) => {
   try {
     const { faceImage, studentId } = req.body;
 
+    // Restrict to Admin only
+    if (req.user && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: 'Access denied. Face registration can only be performed by an Admin.' });
+    }
+
     if (!faceImage) {
       return res.status(400).json({ success: false, message: 'Face image is required' });
     }
 
-    let user = req.user;
-    if (!user) {
-      if (!studentId) {
-        return res.status(400).json({ success: false, message: 'Student ID is required when not authenticated' });
-      }
-      user = await User.findOne({ studentId });
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'Student ID or Email is required' });
     }
 
+    const user = await User.findOne({
+      $or: [{ studentId }, { email: studentId }],
+    });
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({ success: false, message: `Student with ID/Email "${studentId}" not found.` });
     }
 
     const embedding = await faceRecognition.extractEmbedding(faceImage);
-    user.studentId = studentId || user.studentId;
     user.faceEmbeddings = [...(user.faceEmbeddings || []), embedding];
     user.faceImages = [...(user.faceImages || []), faceImage];
 
@@ -30,16 +34,19 @@ exports.registerFace = async (req, res, next) => {
 
     res.json({
       success: true,
+      message: `Face registered successfully for student ${user.name} (${user.studentId || user.email}).`,
       data: {
         id: user._id,
+        name: user.name,
         studentId: user.studentId,
-        faceEmbeddings: user.faceEmbeddings.length,
+        totalEmbeddings: user.faceEmbeddings.length,
       },
     });
   } catch (error) {
     next(error);
   }
 };
+
 
 exports.getUsers = async (req, res, next) => {
   try {

@@ -8,6 +8,7 @@ import Subjects from '../pages/admin/Subjects';
 import Departments from '../pages/admin/Departments';
 import AttendanceLogs from '../pages/admin/AttendanceLogs';
 import Settings from '../pages/admin/Settings';
+import RegisterFaceAdmin from '../pages/admin/RegisterFaceAdmin';
 import FacultyDashboard from '../pages/faculty/Dashboard';
 import ManageAttendance from '../pages/faculty/ManageAttendance';
 import Students from '../pages/faculty/Students';
@@ -32,13 +33,25 @@ const AppRoutes = () => {
       <Route path="/forgot-password" element={<ForgetPassword />} />
 
       <Route
+
         path="/admin/*"
         element={
           <ProtectedRoute allowedRoles={["admin"]}>
-            <AdminDashboard />
+            <Outlet />
           </ProtectedRoute>
         }
-      />
+      >
+        <Route index element={<AdminDashboard />} />
+        <Route path="dashboard" element={<AdminDashboard />} />
+        <Route path="users" element={<Users />} />
+        <Route path="register-face" element={<RegisterFaceAdmin />} />
+        <Route path="subjects" element={<Subjects />} />
+        <Route path="departments" element={<Departments />} />
+        <Route path="attendance-logs" element={<AttendanceLogs />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="*" element={<Navigate to="/admin/dashboard" />} />
+      </Route>
+
 
       <Route path="/faculty/*">
         <Route

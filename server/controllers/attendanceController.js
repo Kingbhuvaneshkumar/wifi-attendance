@@ -1,6 +1,9 @@
 const Attendance = require('../models/Attendance');
+const AuditLog = require('../models/AuditLog');
+const Notification = require('../models/Notification');
 const wifiService = require('../services/wifiService');
 const faceRecognition = require('../services/faceRecognition');
+const { emitAttendanceUpdate } = require('../utils/socket');
 
 exports.logAttendance = async (req, res, next) => {
   try {
@@ -60,7 +63,77 @@ exports.logAttendance = async (req, res, next) => {
       faceVerified: verification.verified,
     });
 
-    res.status(201).json({ success: true, data: attendance });
+    const populated = await Attendance.findById(attendance._id).populate('student', 'name email studentId role');
+
+    // Audit log
+    await AuditLog.create({
+      action: 'ATTENDANCE_MARKED_SELF',
+      performedBy: user._id,
+      targetStudent: user._id,
+      details: { subject, wifiName, method: attendanceMethod },
+    });
+
+    // Real-time Socket.io broadcast to Faculty & Student dashboards
+    emitAttendanceUpdate({
+      type: 'ATTENDANCE_SUBMITTED',
+      attendance: populated,
+      studentId: user._id.toString(),
+      studentName: user.name,
+      subject,
+      status: 'present',
+      timestamp: attendance.timestamp,
+    });
+
+    res.status(201).json({ success: true, data: populated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.markManualAttendance = async (req, res, next) => {
+  try {
+    const { student, subject, status = 'present' } = req.body;
+    if (!student || !subject) {
+      return res.status(400).json({ success: false, message: 'Student ID and subject are required' });
+    }
+
+    const attendance = await Attendance.create({
+      student,
+      subject,
+      status,
+      attendanceMethod: 'manual',
+      wifiName: 'FACULTY_OVERRIDE',
+      faceVerified: true,
+    });
+
+    const populated = await Attendance.findById(attendance._id).populate('student', 'name email studentId role');
+
+    // Notification
+    await Notification.create({
+      title: 'Attendance Updated',
+      message: `Your attendance for ${subject} was marked as ${status.toUpperCase()} by faculty.`,
+    });
+
+    // Audit log
+    await AuditLog.create({
+      action: 'FACULTY_ATTENDANCE_MARK',
+      performedBy: req.user ? req.user._id : null,
+      targetStudent: student,
+      details: { subject, status },
+    });
+
+    // Real-time Socket.io broadcast
+    emitAttendanceUpdate({
+      type: 'FACULTY_MARKED_ATTENDANCE',
+      attendance: populated,
+      studentId: student.toString(),
+      studentName: populated.student ? populated.student.name : 'Student',
+      subject,
+      status,
+      timestamp: attendance.timestamp,
+    });
+
+    res.status(201).json({ success: true, data: populated });
   } catch (error) {
     next(error);
   }
@@ -73,8 +146,29 @@ exports.logAttendanceBulk = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'subject and students[] required' });
     }
 
-    const docs = students.map((studentId) => ({ student: studentId, subject, status }));
+    const docs = students.map((studentId) => ({
+      student: studentId,
+      subject,
+      status,
+      attendanceMethod: 'manual',
+      wifiName: 'FACULTY_BULK_OVERRIDE',
+    }));
     const inserted = await Attendance.insertMany(docs);
+
+    // Real-time Socket.io broadcasts for each student
+    for (const item of inserted) {
+      const populated = await Attendance.findById(item._id).populate('student', 'name email studentId role');
+      emitAttendanceUpdate({
+        type: 'FACULTY_MARKED_ATTENDANCE',
+        attendance: populated,
+        studentId: item.student.toString(),
+        studentName: populated.student ? populated.student.name : 'Student',
+        subject,
+        status,
+        timestamp: item.timestamp,
+      });
+    }
+
     res.status(201).json({ success: true, data: inserted });
   } catch (error) {
     next(error);
@@ -83,9 +177,17 @@ exports.logAttendanceBulk = async (req, res, next) => {
 
 exports.getAttendance = async (req, res, next) => {
   try {
-    const attendance = await Attendance.find();
+    const filter = {};
+    if (req.query.student) filter.student = req.query.student;
+    if (req.query.subject) filter.subject = req.query.subject;
+
+    const attendance = await Attendance.find(filter)
+      .populate('student', 'name email studentId role')
+      .sort({ timestamp: -1 });
+
     res.json({ success: true, data: attendance });
   } catch (error) {
     next(error);
   }
 };
+
