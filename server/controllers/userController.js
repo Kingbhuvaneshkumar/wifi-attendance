@@ -26,7 +26,7 @@ exports.registerFace = async (req, res, next) => {
       return res.status(404).json({ success: false, message: `Student with ID/Email "${studentId}" not found.` });
     }
 
-    const embedding = await faceRecognition.extractEmbedding(faceImage);
+    const embedding = await faceRecognition.extractEmbedding(req.body.faceEmbedding || faceImage);
     user.faceEmbeddings = [...(user.faceEmbeddings || []), embedding];
     user.faceImages = [...(user.faceImages || []), faceImage];
 

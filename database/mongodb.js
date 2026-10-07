@@ -6,7 +6,7 @@ const connectDB = async () => {
   const uri = process.env.MONGO_URI || 'mongodb+srv://abineshas788207_db_user:CykCx1WM8kIfMIxU@cluster0.fa0ilco.mongodb.net/wifi-attendance?retryWrites=true&w=majority';
 
   try {
-    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(uri, { family: 4, tlsAllowInvalidCertificates: true, serverSelectionTimeoutMS: 10000 });
     console.log('MongoDB connected successfully to Atlas cluster');
   } catch (error) {
     console.warn('MongoDB Atlas connection failed:', error.message);

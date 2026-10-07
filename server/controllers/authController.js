@@ -49,8 +49,18 @@ exports.login = async (req, res, next) => {
       ],
     }).select('+password');
 
-    if (!user || !(await user.matchPassword(password.trim()))) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials. Please check your email/student ID and password.' });
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: `No account found with '${rawInput}'. Please click "Register here" below to create an account.`,
+      });
+    }
+
+    if (!(await user.matchPassword(password.trim()))) {
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect password. Please verify your password and try again.',
+      });
     }
 
     const userObj = user.toObject();

@@ -1,33 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
 import AdminLayout from '../../layouts/AdminLayout';
 import { fetchUsers, registerFace } from '../../services/user';
+import * as faceapi from 'face-api.js';
 
 const RegisterFaceAdmin = () => {
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [faceImage, setFaceImage] = useState('');
+  const [faceEmbedding, setFaceEmbedding] = useState(null);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState('success');
   const [loading, setLoading] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
+  const [modelLoaded, setModelLoaded] = useState(false);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
 
   useEffect(() => {
-    const loadStudents = async () => {
+    const loadModelsAndStudents = async () => {
       try {
+        const MODEL_URL = import.meta.env.VITE_FACE_MODEL_URL || 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        setModelLoaded(true);
+
         const users = await fetchUsers();
         const list = users.filter((u) => u.role === 'student');
         setStudents(list);
         if (list.length > 0) setSelectedStudentId(list[0].studentId || list[0].email);
       } catch (e) {
-        console.error('Failed to load students', e);
+        console.error('Model / Student load error', e);
       }
     };
-    loadStudents();
+    loadModelsAndStudents();
 
     return () => {
       if (streamRef.current) {
@@ -35,6 +44,26 @@ const RegisterFaceAdmin = () => {
       }
     };
   }, []);
+
+  const filteredStudents = students.filter(
+    (s) =>
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (s.studentId && s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      s.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  useEffect(() => {
+    if (filteredStudents.length > 0) {
+      const exists = filteredStudents.some(
+        (s) => (s.studentId && s.studentId === selectedStudentId) || s.email === selectedStudentId
+      );
+      if (!exists) {
+        setSelectedStudentId(filteredStudents[0].studentId || filteredStudents[0].email);
+      }
+    } else {
+      setSelectedStudentId('');
+    }
+  }, [searchQuery, students]);
 
   const openCamera = async () => {
     setMessage('');
@@ -72,18 +101,39 @@ const RegisterFaceAdmin = () => {
     setCameraReady(false);
   };
 
-  const handleCapture = () => {
+  const handleCapture = async () => {
     if (!videoRef.current || !cameraReady) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    const base64 = canvas.toDataURL('image/jpeg');
-    setFaceImage(base64);
-    setMessageType('success');
-    setMessage('Face photo captured! Review and click Register.');
-    closeCamera();
+    setMessage('Detecting face features...');
+
+    try {
+      if (modelLoaded) {
+        const detections = await faceapi
+          .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (detections) {
+          const descriptor = Array.from(detections.descriptor);
+          setFaceEmbedding(descriptor);
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 300;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoRef.current, 0, 0, 400, 300);
+      const base64 = canvas.toDataURL('image/jpeg', 0.7);
+      setFaceImage(base64);
+
+      setMessageType('success');
+      setMessage('Face photo & 128-dimensional embedding captured! Click Register.');
+      closeCamera();
+    } catch (e) {
+      console.error(e);
+      setMessageType('error');
+      setMessage('Failed to extract face features. Ensure face is visible.');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -93,7 +143,10 @@ const RegisterFaceAdmin = () => {
       setMessage('Capture face photo first.');
       return;
     }
-    if (!selectedStudentId) {
+
+    const activeStudentId = selectedStudentId || (filteredStudents.length > 0 ? (filteredStudents[0].studentId || filteredStudents[0].email) : searchQuery.trim());
+
+    if (!activeStudentId) {
       setMessageType('error');
       setMessage('Please select a student.');
       return;
@@ -101,10 +154,15 @@ const RegisterFaceAdmin = () => {
 
     try {
       setLoading(true);
-      await registerFace({ faceImage, studentId: selectedStudentId });
+      await registerFace({
+        faceImage,
+        faceEmbedding,
+        studentId: activeStudentId,
+      });
       setMessageType('success');
-      setMessage(`🎉 Face registration completed for student (${selectedStudentId})!`);
+      setMessage(`🎉 Face registration completed for student (${activeStudentId})!`);
       setFaceImage('');
+      setFaceEmbedding(null);
     } catch (err) {
       setMessageType('error');
       setMessage(err?.response?.data?.message || 'Failed to register student face.');
@@ -112,13 +170,6 @@ const RegisterFaceAdmin = () => {
       setLoading(false);
     }
   };
-
-  const filteredStudents = students.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.studentId && s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      s.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <AdminLayout>
@@ -153,11 +204,15 @@ const RegisterFaceAdmin = () => {
             onChange={(e) => setSelectedStudentId(e.target.value)}
             style={{ width: '100%', padding: 10, borderRadius: 6, border: '1px solid var(--border)', fontSize: 16 }}
           >
-            {filteredStudents.map((s) => (
-              <option key={s._id} value={s.studentId || s.email}>
-                {s.name} — ({s.studentId || s.email}) {s.faceEmbeddings?.length ? '✅ Already Enrolled' : '⚠️ Not Enrolled'}
-              </option>
-            ))}
+            {filteredStudents.length === 0 ? (
+              <option value="">-- No matching students found --</option>
+            ) : (
+              filteredStudents.map((s) => (
+                <option key={s._id} value={s.studentId || s.email}>
+                  {s.name} — ({s.studentId || s.email}) {s.faceEmbeddings?.length ? '✅ Already Enrolled' : '⚠️ Not Enrolled'}
+                </option>
+              ))
+            )}
           </select>
         </div>
 

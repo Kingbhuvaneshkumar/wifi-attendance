@@ -82,11 +82,11 @@ const FaceScanner = ({ onComplete, loading }) => {
   const captureImage = () => {
     if (!videoRef.current) return null;
     const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.width = 400;
+    canvas.height = 300;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg');
+    ctx.drawImage(videoRef.current, 0, 0, 400, 300);
+    return canvas.toDataURL('image/jpeg', 0.7);
   };
 
   return (
